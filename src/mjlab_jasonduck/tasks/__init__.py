@@ -1,0 +1,801 @@
+from mjlab_jasonduck.train_hook import maybe_submit_to_hf_jobs
+
+# `train <task> ... --hf-jobs` submits to HF Jobs and exits here, before any
+# of the cfg imports below: this module is what mjlab's plugin loader pulls
+# in, and it is the only train path no install order can take from us (see
+# train_hook.py). A no-op without the flag.
+maybe_submit_to_hf_jobs()
+
+from mjlab.tasks.registry import register_mjlab_task
+from mjlab.tasks.velocity.rl import VelocityOnPolicyRunner
+
+
+class MicroduckOnPolicyRunner(VelocityOnPolicyRunner):
+    def __init__(self, env, train_cfg: dict, log_dir=None, device="cpu", **kwargs):
+        super().__init__(env, train_cfg, log_dir, device, **kwargs)
+        # resolve_symmetry_config injects _env into train_cfg["algorithm"]["symmetry_cfg"]
+        # in-place, sharing the same dict object with self.alg.symmetry.  Replace the
+        # train_cfg reference with a copy that omits _env so dump_yaml can serialize the
+        # config (MjSpec is not picklable), without touching the PPO's internal reference.
+        alg = train_cfg.get("algorithm", {})
+        sym = alg.get("symmetry_cfg") if isinstance(alg, dict) else None
+        if isinstance(sym, dict) and "_env" in sym:
+            alg["symmetry_cfg"] = {k: v for k, v in sym.items() if k != "_env"}
+
+
+from .microduck_velocity_env_cfg import (
+    make_microduck_velocity_env_cfg,
+    MicroduckRlCfg,
+)
+from .microduck_standup_env_cfg import (
+    make_microduck_standup_env_cfg,
+    MicroduckStandUpRlCfg,
+)
+from .microduck_velstand_env_cfg import (
+    make_microduck_velstand_env_cfg,
+    MicroduckVelStandRlCfg,
+)
+from .microduck_ground_pick_env_cfg import (
+    DESCENT_END as _GP_DESCENT_END,
+    HOLD_END as _GP_HOLD_END,
+    RISE_END as _GP_RISE_END,
+    make_microduck_ground_pick_env_cfg,
+    MicroduckGroundPickRlCfg,
+)
+from .microduck_ball_kick_env_cfg import (
+    make_microduck_ball_kick_env_cfg,
+    MicroduckBallKickRlCfg,
+)
+from .microduck_sitstand_env_cfg import (
+    make_microduck_sitstand_env_cfg,
+    MicroduckSitStandRlCfg,
+)
+from .microduck_velocity_rollers_env_cfg import (
+    make_microduck_velocity_rollers_env_cfg,
+    MicroduckRollersRlCfg,
+)
+from .microduck_velocity_swizzle_env_cfg import (
+    make_microduck_velocity_swizzle_env_cfg,
+    MicroduckSwizzleRlCfg,
+)
+from .microduck_roller_crouch_env_cfg import (
+    make_microduck_roller_crouch_env_cfg,
+    MicroduckRollerCrouchRlCfg,
+)
+from .microduck_roller_slope_env_cfg import (
+    make_microduck_roller_slope_env_cfg,
+    MicroduckRollerSlopeRlCfg,
+)
+from .microduck_roller_standup_env_cfg import (
+    make_microduck_roller_standup_env_cfg,
+    MicroduckRollerStandUpRlCfg,
+)
+from .microduck_spin_env_cfg import (
+    make_microduck_spin_env_cfg,
+    MicroduckSpinRlCfg,
+)
+from .microduck_roulade_env_cfg import (
+    make_microduck_roulade_env_cfg,
+    MicroduckRouladeRlCfg,
+)
+from .backlash import make_backlash_variant
+
+# Standard velocity task
+register_mjlab_task(
+    task_id="Mjlab-Velocity-Flat-MicroDuck",
+    env_cfg=make_microduck_velocity_env_cfg(),
+    play_env_cfg=make_microduck_velocity_env_cfg(play=True),
+    rl_cfg=MicroduckRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-Velocity-Rough-MicroDuck",
+    env_cfg=make_microduck_velocity_env_cfg(rough=True),
+    play_env_cfg=make_microduck_velocity_env_cfg(play=True, rough=True),
+    rl_cfg=MicroduckRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# VelStand — walking + fall recovery + body pose control in one policy.
+register_mjlab_task(
+    task_id="Mjlab-VelStand-Flat-MicroDuck",
+    env_cfg=make_microduck_velstand_env_cfg(),
+    play_env_cfg=make_microduck_velstand_env_cfg(play=True),
+    rl_cfg=MicroduckVelStandRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-VelStand-Rough-MicroDuck",
+    env_cfg=make_microduck_velstand_env_cfg(rough=True),
+    play_env_cfg=make_microduck_velstand_env_cfg(play=True, rough=True),
+    rl_cfg=MicroduckVelStandRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# Stand-up task — robot starts inverted (lying on back) and must stand up
+register_mjlab_task(
+    task_id="Mjlab-StandUp-Flat-MicroDuck",
+    env_cfg=make_microduck_standup_env_cfg(),
+    play_env_cfg=make_microduck_standup_env_cfg(play=True),
+    rl_cfg=MicroduckStandUpRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-StandUp-Rough-MicroDuck",
+    env_cfg=make_microduck_standup_env_cfg(rough=True),
+    play_env_cfg=make_microduck_standup_env_cfg(play=True, rough=True),
+    rl_cfg=MicroduckStandUpRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# SitStand task — commanded sit ↔ stand in one policy, gently, head commandable
+register_mjlab_task(
+    task_id="Mjlab-SitStand-Flat-MicroDuck",
+    env_cfg=make_microduck_sitstand_env_cfg(),
+    play_env_cfg=make_microduck_sitstand_env_cfg(play=True),
+    rl_cfg=MicroduckSitStandRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-SitStand-Rough-MicroDuck",
+    env_cfg=make_microduck_sitstand_env_cfg(rough=True),
+    play_env_cfg=make_microduck_sitstand_env_cfg(play=True, rough=True),
+    rl_cfg=MicroduckSitStandRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# Ground-pick task — crouch, touch the ground with the mouth tip, return to stand
+register_mjlab_task(
+    task_id="Mjlab-GroundPick-Flat-MicroDuck",
+    env_cfg=make_microduck_ground_pick_env_cfg(),
+    play_env_cfg=make_microduck_ground_pick_env_cfg(play=True),
+    rl_cfg=MicroduckGroundPickRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# BallKick task — kick a 70mm/15g ball forward hard with the right foot from a
+# standing start (flat terrain only — a ball on rough terrain is another task).
+register_mjlab_task(
+    task_id="Mjlab-BallKick-Flat-MicroDuck",
+    env_cfg=make_microduck_ball_kick_env_cfg(),
+    play_env_cfg=make_microduck_ball_kick_env_cfg(play=True),
+    rl_cfg=MicroduckBallKickRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-GroundPick-Rough-MicroDuck",
+    env_cfg=make_microduck_ground_pick_env_cfg(rough=True),
+    play_env_cfg=make_microduck_ground_pick_env_cfg(play=True, rough=True),
+    rl_cfg=MicroduckGroundPickRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# Roller skate velocity task (passive-wheel model; historical task id kept)
+register_mjlab_task(
+    task_id="Mjlab-Velocity-Flat-MicroDuck-Rollers",
+    env_cfg=make_microduck_velocity_rollers_env_cfg(),
+    play_env_cfg=make_microduck_velocity_rollers_env_cfg(play=True),
+    rl_cfg=MicroduckRollersRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# Roller SWIZZLE task — clean classic swizzle (symmetric, feet grounded).
+register_mjlab_task(
+    task_id="Mjlab-Velocity-Swizzle-MicroDuck",
+    env_cfg=make_microduck_velocity_swizzle_env_cfg(),
+    play_env_cfg=make_microduck_velocity_swizzle_env_cfg(play=True),
+    rl_cfg=MicroduckSwizzleRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-RollerCrouch-Flat-MicroDuck",
+    env_cfg=make_microduck_roller_crouch_env_cfg(),
+    play_env_cfg=make_microduck_roller_crouch_env_cfg(play=True),
+    rl_cfg=MicroduckRollerCrouchRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-RollerSlope-Flat-MicroDuck",
+    env_cfg=make_microduck_roller_slope_env_cfg(),
+    play_env_cfg=make_microduck_roller_slope_env_cfg(play=True),
+    rl_cfg=MicroduckRollerSlopeRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# Roller STANDUP — se relever sur rollers (policy dédiée, départ au sol).
+register_mjlab_task(
+    task_id="Mjlab-RollerStandUp-Flat-MicroDuck",
+    env_cfg=make_microduck_roller_standup_env_cfg(),
+    play_env_cfg=make_microduck_roller_standup_env_cfg(play=True),
+    rl_cfg=MicroduckRollerStandUpRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# Spin task — rotation rapide sur place, sur rollers (slot ground-pick).
+register_mjlab_task(
+    task_id="Mjlab-Spin-Flat-MicroDuck",
+    env_cfg=make_microduck_spin_env_cfg(),
+    play_env_cfg=make_microduck_spin_env_cfg(play=True),
+    rl_cfg=MicroduckSpinRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# Roulade — forward roll over the flat head top, land back on the feet.
+register_mjlab_task(
+    task_id="Mjlab-Roulade-Flat-MicroDuck",
+    env_cfg=make_microduck_roulade_env_cfg(),
+    play_env_cfg=make_microduck_roulade_env_cfg(play=True),
+    rl_cfg=MicroduckRouladeRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# Backlash variants — ±1° serial gear play per servo + encoder-through-backlash
+# actuator feedback and joint obs (see tasks/backlash.py). Each family keeps its
+# base task's collision model: Velocity → robot_walk_backlash.xml,
+# VelStand/StandUp → robot_allcollisions_backlash.xml. Obs/action dims are
+# unchanged vs the base tasks.
+from mjlab_jasonduck.robot.microduck_constants import (
+    MICRODUCK_BACKLASH_ROBOT_CFG,
+    MICRODUCK_ROLLERS_BACKLASH_ROBOT_CFG,
+    MICRODUCK_WALK_BACKLASH_ROBOT_CFG,
+)
+
+# (task_id, make_fn, make_kwargs, rl_cfg, backlash robot cfg). Task ids mirror
+# the base ids with "-Backlash" inserted. Walk-model tasks get the walk
+# backlash robot, roller tasks the wheels+backlash robot, the rest the
+# allcollisions backlash robot — same model as their base task in each case.
+_BL_ALLCOL = MICRODUCK_BACKLASH_ROBOT_CFG
+_BL_WALK = MICRODUCK_WALK_BACKLASH_ROBOT_CFG
+_BL_ROLLERS = MICRODUCK_ROLLERS_BACKLASH_ROBOT_CFG
+_BACKLASH_TASKS = (
+    ("Mjlab-Velocity-Flat-Backlash-MicroDuck", make_microduck_velocity_env_cfg, {}, MicroduckRlCfg, _BL_WALK),
+    ("Mjlab-Velocity-Rough-Backlash-MicroDuck", make_microduck_velocity_env_cfg, {"rough": True}, MicroduckRlCfg, _BL_WALK),
+    ("Mjlab-VelStand-Flat-Backlash-MicroDuck", make_microduck_velstand_env_cfg, {}, MicroduckVelStandRlCfg, _BL_ALLCOL),
+    ("Mjlab-VelStand-Rough-Backlash-MicroDuck", make_microduck_velstand_env_cfg, {"rough": True}, MicroduckVelStandRlCfg, _BL_ALLCOL),
+    ("Mjlab-StandUp-Flat-Backlash-MicroDuck", make_microduck_standup_env_cfg, {}, MicroduckStandUpRlCfg, _BL_ALLCOL),
+    ("Mjlab-StandUp-Rough-Backlash-MicroDuck", make_microduck_standup_env_cfg, {"rough": True}, MicroduckStandUpRlCfg, _BL_ALLCOL),
+    ("Mjlab-SitStand-Flat-Backlash-MicroDuck", make_microduck_sitstand_env_cfg, {}, MicroduckSitStandRlCfg, _BL_ALLCOL),
+    ("Mjlab-SitStand-Rough-Backlash-MicroDuck", make_microduck_sitstand_env_cfg, {"rough": True}, MicroduckSitStandRlCfg, _BL_ALLCOL),
+    ("Mjlab-GroundPick-Flat-Backlash-MicroDuck", make_microduck_ground_pick_env_cfg, {}, MicroduckGroundPickRlCfg, _BL_ALLCOL),
+    ("Mjlab-GroundPick-Rough-Backlash-MicroDuck", make_microduck_ground_pick_env_cfg, {"rough": True}, MicroduckGroundPickRlCfg, _BL_ALLCOL),
+    ("Mjlab-BallKick-Flat-Backlash-MicroDuck", make_microduck_ball_kick_env_cfg, {}, MicroduckBallKickRlCfg, _BL_ALLCOL),
+    ("Mjlab-Velocity-Flat-Backlash-MicroDuck-Rollers", make_microduck_velocity_rollers_env_cfg, {}, MicroduckRollersRlCfg, _BL_ROLLERS),
+    ("Mjlab-Velocity-Swizzle-Backlash-MicroDuck", make_microduck_velocity_swizzle_env_cfg, {}, MicroduckSwizzleRlCfg, _BL_ROLLERS),
+    ("Mjlab-RollerCrouch-Flat-Backlash-MicroDuck", make_microduck_roller_crouch_env_cfg, {}, MicroduckRollerCrouchRlCfg, _BL_ROLLERS),
+    ("Mjlab-RollerSlope-Flat-Backlash-MicroDuck", make_microduck_roller_slope_env_cfg, {}, MicroduckRollerSlopeRlCfg, _BL_ROLLERS),
+)
+for _task_id, _make_cfg, _kw, _rl_cfg, _robot_cfg in _BACKLASH_TASKS:
+    register_mjlab_task(
+        task_id=_task_id,
+        env_cfg=make_backlash_variant(_make_cfg(**_kw), _robot_cfg),
+        play_env_cfg=make_backlash_variant(_make_cfg(play=True, **_kw), _robot_cfg),
+        rl_cfg=_rl_cfg,
+        runner_cls=MicroduckOnPolicyRunner,
+    )
+
+# JasonDuck velocity: walk recipe with the JasonDuck XML and spawn height.
+from copy import deepcopy
+from dataclasses import replace
+
+import math
+
+from mjlab_jasonduck.robot.jasonduck_constants import (
+    JASONDUCK_GETUP_COLLISION,
+    JASONDUCK_SIT_Z,
+    JASONDUCK_STAND_Z,
+    JASONDUCK_STANDUP_ROBOT_CFG,
+    JASONDUCK_SITSTAND_ROBOT_CFG,
+    JASONDUCK_WALK_ROBOT_CFG,
+    JASONDUCK_WALK_STAND_Z,
+)
+from . import mdp as microduck_mdp
+from .microduck_standup_env_cfg import STAND_Z as _MICRODUCK_STANDUP_STAND_Z
+
+# Drop-from-air standup: 10 cm above measured stand height, 2 s frozen, then rise.
+_JASONDUCK_STANDUP_DROP_DZ = 0.10
+_JASONDUCK_STANDUP_FREEZE_S = 2.0
+# 2 s freeze + MicroDuck's 6 s rise window.
+_JASONDUCK_STANDUP_EPISODE_S = 8.0
+
+# view.py pick_conf (deg): legs + neck/head so the mouth can reach the floor.
+_JASONDUCK_PICK_POSE = {
+    "left_hip_yaw": 0.0,
+    "left_hip_roll": math.radians(-5),
+    "left_hip_pitch": math.radians(-80),
+    "left_knee": 0.0,
+    "left_ankle": math.radians(50),
+    "neck_pitch": math.radians(-120),
+    "head_pitch": math.radians(-90),
+    "head_yaw": 0.0,
+    "head_roll": 0.0,
+    "right_hip_yaw": 0.0,
+    "right_hip_roll": math.radians(5),
+    "right_hip_pitch": math.radians(80),
+    "right_knee": 0.0,
+    "right_ankle": math.radians(-50),
+}
+
+# TensorBoard logs under logs/rsl_rl/jasonduck_velocity/.
+JasonDuckRlCfg = replace(
+    MicroduckRlCfg,
+    logger="tensorboard",
+    experiment_name="jasonduck_velocity",
+    run_name="jasonduck",
+    upload_model=False,
+)
+
+
+from mjlab.managers import RewardTermCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
+
+from .jasonduck_physics import configure_jasonduck_physics
+
+
+def _jasonduck_velocity_cfg(**kwargs):
+    cfg = make_microduck_velocity_env_cfg(**kwargs)
+    # MicroDuck's legacy head list includes bearing_roll, a right hip on JasonDuck.
+    if "randomize_head_com" in cfg.events:
+        cfg.events["randomize_head_com"].params["asset_cfg"].body_names = (
+            "neck", "neck_pitch", "yaw_roll_motion", "jaw_soft",
+        )
+    cfg.scene.entities = {"robot": deepcopy(JASONDUCK_WALK_ROBOT_CFG)}
+    # reset_root_state_uniform ADDS these offsets to InitialStateCfg.pos.
+    # HOME already leaves 1 mm below the soles; do not add the height again
+    # or sample negative offsets that push the feet into the floor.
+    cfg.events["reset_base"].params["pose_range"]["z"] = (0.0, 0.0)
+    if kwargs.get("rough", False):
+        # terrain_levels assumes increasing difficulty along rows.
+        cfg.scene.terrain.terrain_generator.curriculum = not kwargs.get("play", False)
+    if "push_robot" in cfg.events:
+        cfg.events["push_robot"].params["velocity_range"] = {
+            "x": (-0.3, 0.3),
+            "y": (-0.3, 0.3),
+        }
+        cfg.events["push_robot"].interval_range_s = (2.0, 5.0)
+    actor = cfg.observations["actor"].terms
+    actor["base_ang_vel"].noise.n_min = -0.06
+    actor["base_ang_vel"].noise.n_max = 0.06
+    actor["projected_gravity"].noise.n_min = -0.03
+    actor["projected_gravity"].noise.n_max = 0.03
+    actor["joint_pos"].noise.n_min = -0.01
+    actor["joint_pos"].noise.n_max = 0.01
+    cfg.rewards["pose"].weight = 1.3 * 0.75
+    cfg.rewards["track_linear_velocity"].weight = 3.0
+    cfg.rewards["track_angular_velocity"].weight = 3.0
+    # Tighten yaw independently; keep roll/pitch angular-rate tolerance unchanged.
+    cfg.rewards["track_angular_velocity"].func = microduck_mdp.track_angular_velocity_split_std
+    cfg.rewards["track_angular_velocity"].params.update(std=0.48, xy_std=math.sqrt(0.5))
+    cfg.rewards["track_linear_velocity"].params["std"] = 0.22
+    cfg.rewards["foot_swing_height"].weight = -0.25
+    from .jasonduck_walk_rewards import feet_air_time_centered, joint_pos_soft_limit_count
+    cfg.rewards["air_time"].func = feet_air_time_centered
+    cfg.rewards["air_time"].params.update(
+        threshold_min=0.125, threshold_max=0.30, center_bonus=0.5,
+    )
+    cfg.rewards["air_time"].weight = 2.5
+    cfg.rewards["foot_clearance"].weight = -10.0
+    cfg.commands["twist"].ranges.ang_vel_z = (-1.5, 1.5)
+    # One fixed point per violating servo joint, irrespective of excess distance.
+    cfg.rewards["dof_pos_limits"].func = joint_pos_soft_limit_count
+    cfg.rewards["dof_pos_limits"].weight = -1.0
+    # Keep the hips near HOME at low commanded speed, while allowing turns.
+    cfg.rewards["hip_yaw_home"] = RewardTermCfg(
+        func=microduck_mdp.joint_pos_l1_when_standing,
+        weight=-4.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", joint_names=("left_hip_yaw", "right_hip_yaw"),
+            ),
+            "command_name": "twist",
+            "linear_threshold": 0.03,
+            "angular_threshold": 1e-6,
+        },
+    )
+    # Mutually exclusive sampling: seven independent commands at 10% each,
+    # with the remaining 30% uniformly mixing body-frame vx, vy and yaw rate.
+    if not kwargs.get("play", False):
+        command = cfg.commands["twist"]
+        command.independent_command_fraction = 0.10
+        command.rel_standing_envs = 0.10
+        command.rel_forward_envs = 0.0
+        command.rel_turn_in_place_envs = 0.0
+        command.rel_backward_envs = 0.0
+        command.rel_heading_envs = 0.0
+        command.heading_command = False
+        command.ranges.heading = None
+        command.rel_world_envs = 0.0
+        cfg.curriculum.pop("standing_envs", None)
+    # Hip yaw inward stop is 0.22 rad.
+    _std_s = dict(cfg.rewards["pose"].params["std_standing"])
+    _std_w = dict(cfg.rewards["pose"].params["std_walking"])
+    _std_r = dict(cfg.rewards["pose"].params["std_running"])
+    _std_s[r".*hip_yaw.*"] = 0.05
+    _std_w[r".*hip_yaw.*"] = 0.15
+    _std_r[r".*hip_yaw.*"] = 0.25
+    _std_w[r".*hip_roll.*"] = math.radians(5.0)
+    _std_r[r".*hip_roll.*"] = math.radians(8.0)
+    cfg.rewards["pose"].params["std_standing"] = _std_s
+    cfg.rewards["pose"].params["std_walking"] = _std_w
+    cfg.rewards["pose"].params["std_running"] = _std_r
+    if kwargs.get("play", False):
+        # Playback should show the policy without random velocity kicks.
+        cfg.events.pop("push_robot", None)
+        # Match the requested Walk playback posture; the training curriculum
+        # must not re-enable random head commands after entering play.
+        cfg.commands["head_pose"].ranges = ((0.0, 0.0),) * 4
+        cfg.commands["head_pose"].zero_command_prob = 1.0
+        cfg.curriculum.pop("head_pose_range", None)
+    cfg = configure_jasonduck_physics(cfg)
+    # Walk command latency: 1-6 physics steps at 5 ms = 5-30 ms.
+    # configure_jasonduck_physics returns a deep copy; other tasks keep their delay.
+    for servo in cfg.scene.entities["robot"].articulation.actuators:
+        servo.delay_min_lag = 1
+        servo.delay_max_lag = 6
+    return cfg
+
+
+register_mjlab_task(
+    task_id="Mjlab-Velocity-Flat-JasonDuck",
+    env_cfg=_jasonduck_velocity_cfg(),
+    play_env_cfg=_jasonduck_velocity_cfg(play=True),
+    rl_cfg=JasonDuckRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-Velocity-Rough-JasonDuck",
+    env_cfg=_jasonduck_velocity_cfg(rough=True),
+    play_env_cfg=_jasonduck_velocity_cfg(play=True, rough=True),
+    rl_cfg=JasonDuckRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# JasonDuck StandUp / GroundPick / SitStand use the full-contact model.
+# Heights measured on the upstream trunk are shifted to JASONDUCK_STAND_Z.
+JasonDuckStandUpRlCfg = replace(
+    MicroduckStandUpRlCfg,
+    logger="tensorboard",
+    experiment_name="jasonduck_standup",
+    run_name="jasonduck",
+    upload_model=False,
+)
+JasonDuckGroundPickRlCfg = replace(
+    MicroduckGroundPickRlCfg,
+    logger="tensorboard",
+    experiment_name="jasonduck_ground_pick",
+    run_name="jasonduck",
+    upload_model=False,
+)
+JasonDuckSitStandRlCfg = replace(
+    MicroduckSitStandRlCfg,
+    logger="tensorboard",
+    experiment_name="jasonduck_sitstand",
+    run_name="jasonduck",
+    upload_model=False,
+)
+
+
+def _retarget_jasonduck_standup(cfg):
+    """Retarget standup heights, drop+freeze reset, and HOME head commands."""
+    stand = JASONDUCK_STAND_Z
+    sit = JASONDUCK_SIT_Z
+    dz = stand - _MICRODUCK_STANDUP_STAND_Z
+    r = cfg.rewards
+    for name in (
+        "height_stand",
+        "height_stand_sharp",
+        "height_stand_l1",
+        "standing_composite",
+    ):
+        r[name].params["target_height"] = stand
+    r["com_upward_velocity"].params["max_height"] = stand + 0.010
+    r["upright_sharp"].params["height_low"] = sit
+    r["upright_sharp"].params["height_high"] = stand
+    r["arrival_damping"].params["height_low"] += dz
+    r["arrival_damping"].params["height_high"] += dz
+    if "head_pose_bias" in r:
+        r["head_pose_bias"].params["gate_height_low"] += dz
+        r["head_pose_bias"].params["gate_height_high"] += dz
+    if "body_pose_tracking" in r:
+        r["body_pose_tracking"].params["nominal_height"] = stand
+
+    drop_z = stand + _JASONDUCK_STANDUP_DROP_DZ
+    cfg.events["set_ground_state"].func = microduck_mdp.set_random_drop_state
+    cfg.events["set_ground_state"].params = {
+        "drop_z_min": drop_z - 0.005,
+        "drop_z_max": drop_z + 0.005,
+        "euler_abs_max": math.pi,
+    }
+    cfg.curriculum.pop("ground_state_mix", None)
+    # StandUp holds the head at HOME instead of sampling head commands.
+    cfg.commands["head_pose"].ranges = ((0.0, 0.0),) * 4
+    cfg.commands["head_pose"].zero_command_prob = 1.0
+    cfg.curriculum.pop("head_pose_range", None)
+    cfg.episode_length_s = _JASONDUCK_STANDUP_EPISODE_S
+
+    joint = cfg.actions["joint_pos"]
+    cfg.actions["joint_pos"] = microduck_mdp.FreezeThenJointPositionActionCfg(
+        entity_name=joint.entity_name,
+        actuator_names=joint.actuator_names,
+        scale=joint.scale,
+        offset=joint.offset,
+        preserve_order=joint.preserve_order,
+        use_default_offset=joint.use_default_offset,
+        clip=joint.clip,
+        freeze_s=_JASONDUCK_STANDUP_FREEZE_S,
+    )
+    if "push_robot" in cfg.events:
+        cfg.events["push_robot"].func = (
+            microduck_mdp.push_by_setting_velocity_after_delay
+        )
+        cfg.events["push_robot"].params["delay_s"] = _JASONDUCK_STANDUP_FREEZE_S
+
+    cfg.sim.nconmax = 200
+    cfg.sim.mujoco.iterations = 30
+    cfg.sim.mujoco.ls_iterations = 50
+    return configure_jasonduck_physics(cfg)
+
+
+def _jasonduck_standup_cfg(**kwargs):
+    from mjlab.managers import RewardTermCfg
+    from mjlab.managers.scene_entity_config import SceneEntityCfg
+    from .standup_hip_home import standup_joint_home_l1
+
+    cfg = make_microduck_standup_env_cfg(**kwargs)
+    cfg.scene.entities = {"robot": deepcopy(JASONDUCK_STANDUP_ROBOT_CFG)}
+    cfg.scene.entities["robot"].collisions = (deepcopy(JASONDUCK_GETUP_COLLISION),)
+    cfg = _retarget_jasonduck_standup(cfg)
+    arrival = cfg.rewards["arrival_damping"].params
+    for axis in ("yaw", "roll"):
+        cfg.rewards[f"hip_{axis}_home_l1"] = RewardTermCfg(
+            func=standup_joint_home_l1, weight=-1.0,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", joint_names=(f"left_hip_{axis}", f"right_hip_{axis}"),
+                ),
+                "height_low": arrival["height_low"],
+                "height_high": arrival["height_high"],
+                "tilt_full_deg": arrival["tilt_full_deg"],
+                "tilt_zero_deg": arrival["tilt_zero_deg"],
+                "freeze_s": cfg.actions["joint_pos"].freeze_s,
+            },
+        )
+    from .standup_training_rewards import configure_pose_tilt_gate, configure_standup_penalty_course
+    cfg = configure_pose_tilt_gate(cfg, minimum_gate=.5)
+    return configure_standup_penalty_course(cfg)
+
+
+def _jasonduck_ground_pick_cfg(**kwargs):
+    from mjlab.managers import RewardTermCfg
+    from mjlab.managers.scene_entity_config import SceneEntityCfg
+
+    cfg = make_microduck_ground_pick_env_cfg(**kwargs)
+    cfg.scene.entities = {"robot": deepcopy(JASONDUCK_STANDUP_ROBOT_CFG)}
+    cfg.scene.entities["robot"].collisions = (deepcopy(JASONDUCK_GETUP_COLLISION),)
+    cfg.events["reset_base"].params["pose_range"]["z"] = (
+        JASONDUCK_STAND_Z - 0.005,
+        JASONDUCK_STAND_Z + 0.005,
+    )
+    # Hip yaw/roll stay at the default pose during the crouch.
+    cfg.rewards["hip_yaw_roll_hold"] = RewardTermCfg(
+        func=microduck_mdp.joint_deviation_l1,
+        weight=-7.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", joint_names=(r".*hip_yaw.*", r".*hip_roll.*")
+            ),
+        },
+    )
+    # Measured send_conf crouch balances at gx≈0.54 (~33° forward), gy≈0.
+    cfg.rewards["descent_gravity_x"] = RewardTermCfg(
+        func=microduck_mdp.ground_pick_gravity_x_phased,
+        weight=1.0,
+        params={
+            "command_name": "twist",
+            "max_forward": 0.65,
+            "descent_end": _GP_DESCENT_END,
+            "hold_end": _GP_HOLD_END,
+            "rise_end": _GP_RISE_END,
+        },
+    )
+    cfg.rewards["descent_gravity_y_abs"] = RewardTermCfg(
+        func=microduck_mdp.ground_pick_gravity_y_abs_phased,
+        weight=-1.0,
+        params={
+            "command_name": "twist",
+            "descent_end": _GP_DESCENT_END,
+            "hold_end": _GP_HOLD_END,
+            "rise_end": _GP_RISE_END,
+        },
+    )
+    cfg.rewards["mouth_ground_proximity"].params["std"] = 0.04
+    cfg.rewards["neck_vel_descent"].weight = -0.01
+    # Light STAND↔pick interpolation (view.py pick_conf). Down-gate via blend.
+    cfg.rewards["descent_pick_pose"] = RewardTermCfg(
+        func=microduck_mdp.phase_pose_track,
+        weight=1.0,
+        params={
+            "command_name": "twist",
+            "std": 0.4,
+            "target_pose": _JASONDUCK_PICK_POSE,
+            "descent_end": _GP_DESCENT_END,
+            "hold_end": _GP_HOLD_END,
+            "rise_end": _GP_RISE_END,
+        },
+    )
+    return configure_jasonduck_physics(cfg)
+
+
+def _retarget_jasonduck_sitstand(cfg):
+    """Shift MicroDuck sit/stand heights onto JASONDUCK kinematic trunk z."""
+    stand = JASONDUCK_STAND_Z
+    sit = JASONDUCK_SIT_Z
+    r = cfg.rewards
+    for name in (
+        "posture_height",
+        "posture_height_sharp",
+        "posture_height_l1",
+        "posture_stillness",
+        "posture_composite",
+    ):
+        r[name].params["sit_z"] = sit
+        r[name].params["stand_z"] = stand
+    r["rise_bootstrap"].params["max_height"] = stand + 0.010
+    # MicroDuck: SIT_UPRIGHT_Z = SIT_Z + 0.015, STAND_UPRIGHT_Z = STAND_Z - 0.015
+    r["upright_while_tall"].params["height_low"] = sit + 0.015
+    r["upright_while_tall"].params["height_high"] = stand - 0.015
+    cfg.commands["twist"].sit_z = sit
+    cfg.commands["twist"].stand_z = stand
+    cfg.events["reset_base"].params["pose_range"]["z"] = (
+        stand - 0.005,
+        stand + 0.005,
+    )
+    gs = cfg.events["set_ground_state"].params
+    gs["sitting_z_min"] = sit
+    gs["sitting_z_max"] = sit + 0.015
+    gs["standing_z_min"] = stand - 0.005
+    gs["standing_z_max"] = stand + 0.005
+    return configure_jasonduck_physics(cfg)
+
+
+def _jasonduck_sitstand_cfg(**kwargs):
+    cfg = make_microduck_sitstand_env_cfg(**kwargs)
+    cfg.scene.entities = {"robot": deepcopy(JASONDUCK_SITSTAND_ROBOT_CFG)}
+    cfg.scene.entities["robot"].collisions = (deepcopy(JASONDUCK_GETUP_COLLISION),)
+    cfg = _retarget_jasonduck_sitstand(cfg)
+    if "randomize_head_com" in cfg.events:
+        cfg.events["randomize_head_com"].params["asset_cfg"].body_names = (
+            "neck", "neck_pitch", "yaw_roll_motion", "jaw_soft",
+        )
+    # Preserve servo reset noise, but always reset tiny passive hinges to zero.
+    reset = cfg.events["reset_robot_joints"]
+    passive_reset = deepcopy(reset)
+    reset.params["asset_cfg"] = SceneEntityCfg(
+        "robot", joint_names=(r"^(?!passive_).*",),
+    )
+    passive_reset.params.update(
+        asset_cfg=SceneEntityCfg("robot", joint_names=(r"^passive_.*_backlash$",)),
+        position_range=(0.0, 0.0), velocity_range=(0.0, 0.0),
+    )
+    cfg.events["reset_backlash_joints"] = passive_reset
+    # JasonDuck neck pitch HOME is +20°, upper stop +60°: cap positive
+    # commands at +36° (90% of the remaining travel), rather than +63°.
+    for stage in cfg.curriculum["head_pose_range"].params["range_stages"]:
+        ranges = list(stage["ranges"])
+        lo, hi = ranges[0]
+        ranges[0] = (lo, min(hi, math.radians(36)))
+        stage["ranges"] = tuple(ranges)
+    if kwargs.get("play", False):
+        cfg.events.pop("push_robot", None)
+        cfg.curriculum.pop("push_magnitude", None)
+    return configure_jasonduck_physics(cfg)
+
+
+register_mjlab_task(
+    task_id="Mjlab-StandUp-Flat-JasonDuck",
+    env_cfg=_jasonduck_standup_cfg(),
+    play_env_cfg=_jasonduck_standup_cfg(play=True),
+    rl_cfg=JasonDuckStandUpRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+register_mjlab_task(
+    task_id="Mjlab-StandUp-Rough-JasonDuck",
+    env_cfg=_jasonduck_standup_cfg(rough=True),
+    play_env_cfg=_jasonduck_standup_cfg(play=True, rough=True),
+    rl_cfg=JasonDuckStandUpRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+register_mjlab_task(
+    task_id="Mjlab-GroundPick-Flat-JasonDuck",
+    env_cfg=_jasonduck_ground_pick_cfg(),
+    play_env_cfg=_jasonduck_ground_pick_cfg(play=True),
+    rl_cfg=JasonDuckGroundPickRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+register_mjlab_task(
+    task_id="Mjlab-GroundPick-Rough-JasonDuck",
+    env_cfg=_jasonduck_ground_pick_cfg(rough=True),
+    play_env_cfg=_jasonduck_ground_pick_cfg(play=True, rough=True),
+    rl_cfg=JasonDuckGroundPickRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+register_mjlab_task(
+    task_id="Mjlab-SitStand-Flat-JasonDuck",
+    env_cfg=_jasonduck_sitstand_cfg(),
+    play_env_cfg=_jasonduck_sitstand_cfg(play=True),
+    rl_cfg=JasonDuckSitStandRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+register_mjlab_task(
+    task_id="Mjlab-SitStand-Rough-JasonDuck",
+    env_cfg=_jasonduck_sitstand_cfg(rough=True),
+    play_env_cfg=_jasonduck_sitstand_cfg(play=True, rough=True),
+    rl_cfg=JasonDuckSitStandRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# JasonDuck dynamic tricks (flat terrain); default BallKick is right-footed.
+from .jasonduck_tricks_env_cfg import (
+    make_jasonduck_ball_kick_env_cfg, make_jasonduck_roulade_env_cfg,
+    JasonDuckBallKickRlCfg, JasonDuckBallKickLeftRlCfg, JasonDuckRouladeRlCfg,
+)
+
+for _task_id, _factory, _kwargs, _runner_cfg in (
+    ("Mjlab-BallKick-Flat-JasonDuck", make_jasonduck_ball_kick_env_cfg,
+     {"kick_foot": "right"}, JasonDuckBallKickRlCfg),
+    ("Mjlab-BallKick-Left-Flat-JasonDuck", make_jasonduck_ball_kick_env_cfg,
+     {"kick_foot": "left"}, JasonDuckBallKickLeftRlCfg),
+    ("Mjlab-Roulade-Flat-JasonDuck", make_jasonduck_roulade_env_cfg, {}, JasonDuckRouladeRlCfg),
+):
+    register_mjlab_task(
+        task_id=_task_id,
+        env_cfg=_factory(**_kwargs),
+        play_env_cfg=_factory(play=True, **_kwargs),
+        rl_cfg=_runner_cfg,
+        runner_cls=MicroduckOnPolicyRunner,
+    )
+
+
+from .jasonduck_velocity_swizzle_env_cfg import (
+    JasonDuckSwizzleRlCfg,
+    make_jasonduck_velocity_swizzle_env_cfg,
+)
+
+register_mjlab_task(
+    task_id="Mjlab-Velocity-Swizzle-JasonDuck",
+    env_cfg=make_jasonduck_velocity_swizzle_env_cfg(),
+    play_env_cfg=make_jasonduck_velocity_swizzle_env_cfg(play=True),
+    rl_cfg=JasonDuckSwizzleRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+
+# Dedicated recovery on the latest four-passive-wheel JasonDuck model.
+from .jasonduck_roller_standup_env_cfg import make_jasonduck_roller_standup_env_cfg
+
+JasonDuckRollerStandUpRlCfg = replace(
+    JasonDuckStandUpRlCfg,
+    experiment_name="jasonduck_roller_standup",
+    run_name="jasonduck_roller_standup",
+)
+register_mjlab_task(
+    task_id="Mjlab-RollerStandUp-Flat-JasonDuck",
+    env_cfg=make_jasonduck_roller_standup_env_cfg(),
+    play_env_cfg=make_jasonduck_roller_standup_env_cfg(play=True),
+    rl_cfg=JasonDuckRollerStandUpRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+
+from mjlab_jasonduck.play_hook import maybe_inject_latest_checkpoint
+
+# After all task ids are registered: `play TASK` with no checkpoint flag
+# picks the latest local model_*.pt. Explicit wandb/file flags still win.
+maybe_inject_latest_checkpoint()

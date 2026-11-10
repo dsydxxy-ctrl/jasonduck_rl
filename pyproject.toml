@@ -1,0 +1,91 @@
+[build-system]
+requires = ["uv_build>=0.8.19,<0.9.0"]
+build-backend = "uv_build"
+
+[project]
+name = "jasonduck-rl"
+version = "0.1.0"
+description = "RL training environments for the JasonDuck robot, built on mjlab"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+# bam (better-actuator-models) requires Python <3.13; use the tested 3.12 runtime.
+requires-python = ">=3.12, <3.13"
+dependencies = [
+    "mjlab==1.3.0",
+    "warp-lang==1.12.0",
+    # BAM distribution name is `better-actuator-models`; the import stays `bam`.
+    "better-actuator-models",
+    "onnxruntime>=1.24.4",
+    "rustypot>=1.4.2",
+    "huggingface_hub>=0.27.0",
+    "matplotlib>=3.10.9",
+    # mjlab 1.3.0 imports scipy for heightfield terrains but does not declare it.
+    "scipy>=1.16",
+    # Direct dep ONLY so [tool.uv.sources] can bind torch to the CUDA index on
+    # aarch64 (see the torch source below) — uv applies sources to DIRECT
+    # dependencies only, so as a purely transitive dep (mjlab, rsl_rl) the
+    # source entry is silently ignored.
+    # Pinned to the exact version uv.lock already resolved from PyPI so this
+    # changes only the SOURCE of the wheel on aarch64, not the version: a
+    # floating `>=` lets the CUDA index (which carries newer builds than the
+    # PyPI pin) drag torch 2.9.1 -> 2.13.0, an unvetted bump for mjlab/rsl_rl.
+    "torch==2.9.1",
+]
+
+[project.entry-points."mjlab.tasks"]
+mjlab_jasonduck = "mjlab_jasonduck.tasks"
+
+[project.scripts]
+# Keep this entry point: it provides the `train` command, while `train_hook.py`
+# handles `--hf-jobs` through the `mjlab.tasks` entry point above.
+train = "mjlab_jasonduck.train_cli:main"
+
+[tool.ruff]
+src = ["src"]  # Helpful for recognizing first-party imports.
+indent-width = 4
+exclude = [
+  "src/mjlab/third_party",
+  "typings",
+]
+
+[tool.uv.build-backend]
+module-name = "mjlab_jasonduck"
+
+[tool.uv]
+override-dependencies = [
+    # Do not override mujoco: mjlab 1.3.0's mujoco-warp pins a compatible version.
+    # bam pins protobuf<4.0 (for its zmq/dynamixel messaging, which we don't
+    # use — we only import bam.model/bam.actuator). Without this override the
+    # downgrade cascades onnx down to 1.17.0, which has no wheel and fails to
+    # build from source.
+    "protobuf>=4.0,<7.0",
+    # Keep onnx on a version with prebuilt wheels (1.17.0 has no py3.13 wheel and
+    # fails to build from source). Pulling in bam otherwise nudges it downward.
+    "onnx>=1.20.1",
+    # bam's zmq messaging is unused; exclude its placeholder zmq dependency.
+    "zmq ; python_version < '3.0'",
+]
+
+[tool.uv.sources]
+# mjlab now comes from PyPI (==1.3.0, pinned in [project.dependencies]); no git source.
+# BAM actuator model vendored in this repository.
+better-actuator-models = { path = "vendor/bam", editable = true }
+# On linux-aarch64 (DGX Spark / GB10) PyPI's torch wheel is CPU-ONLY:
+# torch.__version__ == "2.9.1+cpu", torch.version.cuda is None, so
+# torch.cuda.device_count() == 0 and mjlab's select_gpus() indexes an empty
+# list -> `IndexError: list index out of range` before training even starts
+# (mjlab/utils/gpu.py:70). Route torch to PyTorch's CUDA index there.
+# cu129 (not cu130) matches the CUDA toolkit warp 1.12.0 bundles, so the
+# zero-copy warp<->torch interop stays on one runtime major version.
+# The marker keeps x86_64 (HF Jobs) on PyPI, where the wheel already bundles
+# CUDA via its nvidia-*-cu12 deps — that resolution is unchanged.
+torch = [
+  { index = "pytorch-cu129", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+# explicit: only packages that name this index resolve from it.
+explicit = true
