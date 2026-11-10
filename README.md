@@ -20,13 +20,19 @@ The project pins mjlab, Warp, and PyTorch versions in `pyproject.toml` and
 other platforms use the configured PyPI source. This does not replace the need
 for a working NVIDIA driver.
 
-## 2. Get the source and install
+## 2. Clone and install
 
-Place the project source files in a directory named `jasonduck_rl` and enter
-the project root directory:
+Repository: [https://github.com/dsydxxy-ctrl/jasonduck_rl](https://github.com/dsydxxy-ctrl/jasonduck_rl)
 
 ```bash
+git clone https://github.com/dsydxxy-ctrl/jasonduck_rl.git
 cd jasonduck_rl
+```
+
+For an existing checkout, update it from the project root:
+
+```bash
+git pull --ff-only
 ```
 
 Install Python 3.12 if it is not already available, then synchronize the

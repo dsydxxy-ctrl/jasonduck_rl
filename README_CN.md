@@ -19,12 +19,19 @@
 Linux `aarch64` 平台通过 uv 选择 PyTorch CUDA 12.9 软件源；其他平台使用配置的
 PyPI 软件源。无论使用哪个软件源，都仍然需要可用且兼容的 NVIDIA 驱动。
 
-## 2. 获取源码并安装
+## 2. 克隆项目并安装
 
-将项目源码放入名为 `jasonduck_rl` 的目录，然后进入项目根目录：
+项目地址：[https://github.com/dsydxxy-ctrl/jasonduck_rl](https://github.com/dsydxxy-ctrl/jasonduck_rl)
 
 ```bash
+git clone https://github.com/dsydxxy-ctrl/jasonduck_rl.git
 cd jasonduck_rl
+```
+
+如果已经克隆过项目，可在项目根目录更新到最新版本：
+
+```bash
+git pull --ff-only
 ```
 
 如果系统尚未安装 Python 3.12，可使用 uv 安装，然后同步锁定的依赖环境：
