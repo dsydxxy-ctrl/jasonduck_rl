@@ -1,0 +1,35 @@
+# Python bytecode and packaging
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Local environments and credentials
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Training runs and generated artifacts
+logs/
+logdir/
+runs/
+wandb/
+checkpoints/
+outputs/
+recordings/
+*.pt
+*.pth
+*.onnx
+*.npz
+*.log
+*.mp4
+
+# Tool caches
+.cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage*
